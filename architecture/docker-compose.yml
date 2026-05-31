@@ -1,0 +1,108 @@
+services:
+  mgm:
+    image: mysql/mysql-cluster:8.0
+    container_name: retail_dwh_mgm
+    hostname: mgm
+    command: >
+      ndb_mgmd
+        --ndb-nodeid=1
+        --nodaemon
+        --config-cache=false
+    volumes:
+      - ./config/config.ini:/etc/mysql-cluster.cnf:ro
+      - mgm_data:/var/lib/mysql-cluster
+    networks:
+      - dwh_net
+    ports:
+      - "1186:1186"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ndb_mgm", "-c", "localhost:1186", "-e", "show"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+  dn1:
+    image: mysql/mysql-cluster:8.0
+    container_name: retail_dwh_dn1
+    hostname: dn1
+    command: ndbd --ndb-nodeid=2 --ndb-connectstring=mgm:1186 --nodaemon
+    depends_on:
+      mgm:
+        condition: service_started
+    networks:
+      - dwh_net
+    volumes:
+      - dn1_data:/var/lib/mysql
+    restart: unless-stopped
+  dn2:
+    image: mysql/mysql-cluster:8.0
+    container_name: retail_dwh_dn2
+    hostname: dn2
+    command: ndbd --ndb-nodeid=3 --ndb-connectstring=mgm:1186 --nodaemon
+    depends_on:
+      mgm:
+        condition: service_started
+    networks:
+      - dwh_net
+    volumes:
+      - dn2_data:/var/lib/mysql
+    restart: unless-stopped
+  sql:
+    image: mysql/mysql-cluster:8.0
+    container_name: retail_dwh_sql
+    hostname: sql
+    command: >
+      mysqld
+        --ndbcluster
+        --ndb-connectstring=mgm:1186
+        --ndb-nodeid=4
+        --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: retail_dwh
+      MYSQL_USER: dwh_user
+      MYSQL_PASSWORD: dwh_pass
+    depends_on:
+      mgm:
+        condition: service_started
+      dn1:
+        condition: service_started
+      dn2:
+        condition: service_started
+    ports:
+      - "3306:3306"
+    networks:
+      - dwh_net
+    volumes:
+      - sql_data:/var/lib/mysql
+    restart: unless-stopped
+  adminer:
+    image: adminer
+    container_name: retail_dwh_adminer
+    depends_on:
+      - sql
+    ports:
+      - "8080:8080"
+    networks:
+      - dwh_net
+  metabase:
+    image: metabase/metabase:latest
+    container_name: retail_dwh_metabase
+    ports:
+      - "3000:3000"
+    environment:
+      MB_DB_TYPE: h2
+    networks:
+      - dwh_net
+    depends_on:
+      - sql
+    restart: unless-stopped
+networks:
+  dwh_net:
+    driver: bridge
+volumes:
+  mgm_data:
+  dn1_data:
+  dn2_data:
+  sql_data:

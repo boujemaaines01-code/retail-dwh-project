@@ -1,0 +1,5 @@
+pandas==2.1.4
+numpy==1.26.2
+mysql-connector-python==8.2.0
+python-dotenv==1.0.0
+faker==21.0.0
